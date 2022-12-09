@@ -1,16 +1,9 @@
 #include <malloc.h>
 #include <stdlib.h>
-#include <sys/stat.h>
 #include <string.h>
 #include "lib_tar.h"
 
 int is_zeros(const void *buf, size_t size) {
-//    for (size_t i = 0; i < size; ++i) {
-//        if (*(buf+i)) {
-//            return 0;
-//        }
-//    }
-//    return 1;
     char zero_buffer[size];
     memset(zero_buffer, 0, size);
     return memcmp(buf, zero_buffer, size);
@@ -102,8 +95,6 @@ int check_archive(int tar_fd) {
         lseek(tar_fd, padding, SEEK_CUR);
     }
 
-    printf("count: %d\n", file_count);
-
     return 0;
 }
 
@@ -117,6 +108,7 @@ int check_archive(int tar_fd) {
  *         any other value otherwise.
  */
 int exists(int tar_fd, char *path) {
+    // TODO
     return 0;
 }
 
@@ -155,6 +147,7 @@ int is_file(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int is_symlink(int tar_fd, char *path) {
+    // TODO
     return 0;
 }
 
@@ -182,6 +175,7 @@ int is_symlink(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
+    // TODO: alexandre
     return 0;
 }
 
