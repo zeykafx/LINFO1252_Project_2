@@ -50,6 +50,11 @@ int is_zeros(const void *buf, size_t size);
 
 int compute_checksum(tar_file_t *tar);
 
+int check_eof(int tar_fd, tar_file_t *tar);
+
+int get_header(int tar_fd, tar_file_t *tar);
+
+int check_file_type(int tar_fd, char *path, char typeflag);
 
 /**
  * Checks whether the archive is valid.

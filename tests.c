@@ -36,8 +36,11 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    int ret = check_archive(fd);
-    printf("check_archive returned %d\n", ret);
+//    int ret = check_archive(fd);
+//    printf("check_archive returned %d\n", ret);
+
+    int is_directory = is_dir(fd, "test_dir/");
+    printf("is_dir returned %d\n", is_directory);
 
     return 0;
 }
