@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <stdlib.h>
 #include <fcntl.h>
 
 #include "lib_tar.h"
@@ -35,12 +36,18 @@ int main(int argc, char **argv) {
         perror("open(tar_file)");
         return -1;
     }
+    size_t size = 10;
+    uint8_t *buf = malloc(size);
+    int res = read_file(fd, "tests.c", 0, buf, &size);
+    // int exist = exists(fd, "test/t");
+    // printf("%d", exist);
+    // int ret = check_archive(fd);
+    printf("check_archive returned %d\n", res);
+    for (int i = 0; i < size; i++)
+        printf("%c", buf[i]);
 
-//    int ret = check_archive(fd);
-//    printf("check_archive returned %d\n", ret);
-
-    int is_directory = is_dir(fd, "test_dir/");
-    printf("is_dir returned %d\n", is_directory);
+    // int is_directory = is_dir(fd, "test_dir/");
+    // printf("is_dir returned %d\n", is_directory);
 
     return 0;
 }

@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <unistd.h>
 
 typedef struct posix_header
@@ -46,9 +47,9 @@ typedef struct {
     uint8_t *block;
 } tar_file_t;
 
-int is_zeros(const void *buf, size_t size);
+bool is_zeros(const void *buf, size_t size);
 
-int compute_checksum(tar_file_t *tar);
+bool check_checksum(tar_file_t *tar);
 
 int check_eof(int tar_fd, tar_file_t *tar);
 

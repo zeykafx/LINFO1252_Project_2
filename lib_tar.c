@@ -4,13 +4,16 @@
 #include <stdbool.h>
 #include "lib_tar.h"
 
-int is_zeros(const void *buf, size_t size) {
-    char zero_buffer[size];
-    memset(zero_buffer, 0, size);
-    return memcmp(buf, zero_buffer, size);
+bool is_zeros(const void *buf, size_t size) {
+    for (int i = 0; i < size; i++) {
+        if (*((char*) buf) != 0) {
+            return false;
+        }
+    }
+    return true;
 }
 
-int compute_checksum(tar_file_t *tar) {
+bool check_checksum(tar_file_t *tar) {
     int correct_checksum = TAR_INT(tar->header.chksum);
 
     // store the raw bytes from the header
@@ -26,17 +29,17 @@ int compute_checksum(tar_file_t *tar) {
         checksum += (unsigned char) header_buf[i];
     }
 
-    return memcmp(&correct_checksum, &checksum, sizeof(int));
+    return correct_checksum == checksum;
 }
 
 int check_eof(int tar_fd, tar_file_t *tar) {
     // check to see if the header was full of 0s, if that's the case, check that the next block of length 512 is also 0s, if that's also the case then we reached the end of the tarball
-    if (is_zeros((void *) &tar->header, 512) == 0) {
+    if (is_zeros((void *) &tar->header, 512)) {
         if (read(tar_fd, (void *) &tar->header, sizeof(tar_header_t)) == -1) {
             perror("Failed to read data from file");
             exit(EXIT_FAILURE);
         }
-        if (is_zeros((void *) &tar->header, 512) == 0) {
+        if (is_zeros((void *) &tar->header, 512)) {
             // two empty blocks, this is the end of the tarball
             return 1;
         }
@@ -101,7 +104,7 @@ int check_archive(int tar_fd) {
             return -2; // return -2 if the archive contains a header with an invalid version value
         }
 
-        if (compute_checksum(&tar) != 0) {
+        if (!check_checksum(&tar)) {
             return -3; // return -3 when the archive contains a header with an invalid checksum value
         }
 
@@ -109,7 +112,7 @@ int check_archive(int tar_fd) {
 
         lseek(tar_fd, padding, SEEK_CUR);
     }
-    return 0;
+    return file_count;
 }
 
 int check_file_type(int tar_fd, char *path, char typeflag) {
@@ -160,7 +163,25 @@ int check_file_type(int tar_fd, char *path, char typeflag) {
  *         any other value otherwise.
  */
 int exists(int tar_fd, char *path) {
-    // TODO
+    while(true) {
+        tar_file_t tar;
+
+        if (get_header(tar_fd, &tar) < 0) {
+            break;
+        }
+
+        int file_size = TAR_INT(tar.header.size);
+        lseek(tar_fd, file_size, SEEK_CUR);
+        if (strncmp(path, tar.header.name, strlen(path)) == 0) {
+            lseek(tar_fd, 0, SEEK_SET);
+            return 1;
+        }
+
+        int padding = (512 - file_size % 512) % 512;
+        lseek(tar_fd, padding, SEEK_CUR);
+
+    }
+    lseek(tar_fd, 0, SEEK_SET);
     return 0;
 }
 
@@ -249,5 +270,35 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
  *
  */
 ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
-    return 0;
+    // TODO DEAL WITH SYMLINK
+    while(true) {
+        tar_file_t tar;
+
+        if (get_header(tar_fd, &tar) < 0) {
+            break;
+        }
+
+        int file_size = TAR_INT(tar.header.size);
+
+        if (strncmp(path, tar.header.name, strlen(path)) == 0) {
+            if (tar.header.typeflag != REGTYPE && tar.header.typeflag != AREGTYPE && tar.header.typeflag != LNKTYPE) {
+                return -2;
+            }
+            if (offset > file_size) return -2;
+            lseek(tar_fd, offset, SEEK_CUR);
+            int res = read(tar_fd, (void*)dest, *len);
+            if (res == -1) {
+                // DEAL WITH ERROR;
+            }
+            lseek(tar_fd, 0, SEEK_SET);
+            return file_size - res;
+        }
+
+        int padding = (512 - file_size % 512) % 512;
+        lseek(tar_fd, padding, SEEK_CUR);
+
+    }
+    lseek(tar_fd, 0, SEEK_SET);
+    return -1;
+    
 }
