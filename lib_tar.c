@@ -116,22 +116,11 @@ int check_archive(int tar_fd) {
 }
 
 int check_file_type(int tar_fd, char *path, char typeflag) {
-    while (1) {
-        tar_file_t tar;
-
-        if (get_header(tar_fd, &tar) < 0) {
-            break; // reached EOF
-        }
+    tar_file_t tar;
+    while (get_header(tar_fd, &tar) >= 0) {
 
         int file_size = TAR_INT(tar.header.size);
-        uint8_t data[file_size + 1];
-
-        if (read(tar_fd, (void *) &data, file_size) == -1) {
-            perror("Failed to read data from file");
-            exit(EXIT_FAILURE);
-        }
-
-        tar.block = data;
+        lseek(tar_fd, file_size, SEEK_CUR);
 
         // compare the filename with the path
         // TODO: maybe check if the name is in the path, this way if the user forgot the '/' it would still find the file
@@ -141,14 +130,16 @@ int check_file_type(int tar_fd, char *path, char typeflag) {
             continue;
         }
 
-        char aregtypeflag = AREGTYPE;
         // checks the header typeflag with the typeflag passed in as arg, and if the argument typeflag is REGTYPE, then we also want to check if the file perhaps has the old regular type AREGTYPE
-        if ((memcmp(&tar.header.typeflag, &typeflag, sizeof(typeflag)) == 0) || (typeflag == REGTYPE ? memcmp(&tar.header.typeflag, &aregtypeflag, sizeof(aregtypeflag)) == 0 : 0)) {
+        if (tar.header.typeflag == typeflag || (typeflag == REGTYPE && tar.header.typeflag == AREGTYPE)) {
+            lseek(tar_fd, 0, SEEK_SET);
             return 1; // success, we found the file, and it is the correct type
         } else {
+            lseek(tar_fd, 0, SEEK_SET);
             return -1; // we found the file, but it is not the correct type
         }
     }
+    lseek(tar_fd, 0, SEEK_SET);
 
     return 0;
 }
@@ -163,22 +154,19 @@ int check_file_type(int tar_fd, char *path, char typeflag) {
  *         any other value otherwise.
  */
 int exists(int tar_fd, char *path) {
-    while(true) {
-        tar_file_t tar;
-
-        if (get_header(tar_fd, &tar) < 0) {
-            break;
-        }
-
-        int file_size = TAR_INT(tar.header.size);
-        lseek(tar_fd, file_size, SEEK_CUR);
-        if (strncmp(path, tar.header.name, strlen(path)) == 0) {
-            lseek(tar_fd, 0, SEEK_SET);
+    tar_file_t tar;
+    while(get_header(tar_fd, &tar) >= 0) {
+        // Check if current file have the same name as path
+        // TODO avoid buffer overflow
+        if (strncmp(path, tar.header.name, strlen(tar.header.name)) == 0) {
+            lseek(tar_fd, 0, SEEK_SET); // Back to start of file
             return 1;
         }
-
+        
+        // Go to the next file
+        int file_size = TAR_INT(tar.header.size);
         int padding = (512 - file_size % 512) % 512;
-        lseek(tar_fd, padding, SEEK_CUR);
+        lseek(tar_fd, file_size + padding, SEEK_CUR);
 
     }
     lseek(tar_fd, 0, SEEK_SET);
@@ -247,8 +235,23 @@ int is_symlink(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
-    // TODO
-    return 0;
+    // TODO DEAL WITH SYMLINK
+    int current = 0;
+    tar_file_t tar;
+    while(current < *no_entries && get_header(tar_fd, &tar) >= 0) {
+
+        // TODO check for bufferoverflow
+        if (strncmp(path, tar.header.name, strlen(path)) == 0) {
+            strcnpy(entries[current++],tar.header.name, sizeof(tar.header.name));
+        }
+        int file_size = TAR_INT(tar.header.size);
+        int padding = (512 - file_size % 512) % 512;
+        lseek(tar_fd, file_size + padding, SEEK_CUR);
+
+    }
+    lseek(tar_fd, 0, SEEK_SET);
+    *no_entries = current;
+    return current;
 }
 
 /**
@@ -279,7 +282,8 @@ ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *
         }
 
         int file_size = TAR_INT(tar.header.size);
-
+        
+        // TODO deal with buffer overflow
         if (strncmp(path, tar.header.name, strlen(path)) == 0) {
             if (tar.header.typeflag != REGTYPE && tar.header.typeflag != AREGTYPE && tar.header.typeflag != LNKTYPE) {
                 return -2;
