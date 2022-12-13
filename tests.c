@@ -31,23 +31,50 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    int fd = open(argv[1] , O_RDONLY);
+    int fd = open(argv[1], O_RDONLY);
     if (fd == -1) {
         perror("open(tar_file)");
         return -1;
     }
-    size_t size = 10;
+
+//    /*            check archive test:            */
+//    int ret = check_archive(fd);
+//    printf("check_archive returned %d (positive number == success)\n", ret);
+//
+    /*            is ___ test:            */
+    int is_directory = is_symlink(fd, "dir/file1_symlink.txt");
+    printf("is_symlink returned %d\n", is_directory);
+
+
+    /*            exists test :            */
+    int file_exists = exists(fd, "dir/file1_symlink.txt");
+    printf("exists returned : %d\n", file_exists);
+
+//    /*            list test:            */
+//    size_t no_entries = 6;
+//    char **entries = malloc(no_entries * sizeof(char *));
+//    for (int i = 0; i < no_entries; ++i) {
+//        entries[i] = malloc(1000);
+//    }
+//    int list_res = list(fd, "dir/", entries, &no_entries);
+//    printf("list returned : %d\n", list_res);
+//    for (int i = 0; i < no_entries; ++i) {
+//        printf("entry %d: %s\t", i, entries[i]);
+//        free(entries[i]);
+//    }
+//    printf("\n");
+//    free(entries);
+
+
+    /*            read_file test:            */
+    size_t size = 1000;
     uint8_t *buf = malloc(size);
-    int res = read_file(fd, "tests.c", 0, buf, &size);
-    // int exist = exists(fd, "test/t");
-    // printf("%d", exist);
-    // int ret = check_archive(fd);
-    printf("check_archive returned %d\n", res);
+    int file_read = read_file(fd, "dir/file1_symlink.txt", 0, buf, &size);
+    printf("read_file returned : %d\n", file_read);
     for (int i = 0; i < size; i++)
         printf("%c", buf[i]);
+    free(buf);
 
-    // int is_directory = is_dir(fd, "test_dir/");
-    // printf("is_dir returned %d\n", is_directory);
 
     return 0;
 }
