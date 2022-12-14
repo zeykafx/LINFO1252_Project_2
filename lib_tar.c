@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <libgen.h>
 #include "lib_tar.h"
 
 bool is_zeros(const void *buf, size_t size) {
@@ -77,6 +78,10 @@ int get_header(int tar_fd, tar_file_t *tar) {
  *         -3 if the archive contains a header with an invalid checksum value
  */
 int check_archive(int tar_fd) {
+    // get the offset at the start of the function, this way we can go back there once we're done here
+    long start_offset = lseek(tar_fd, 0, SEEK_CUR);
+    lseek(tar_fd, 0, SEEK_SET);
+
     int file_count = 0;
 
     for (file_count = 0;; ++file_count) {
@@ -87,40 +92,36 @@ int check_archive(int tar_fd) {
         }
 
         int file_size = TAR_INT(tar.header.size);
-        uint8_t data[file_size + 1];
-
-        if (read(tar_fd, (void *) &data, file_size) == -1) {
-            perror("Failed to read data from file");
-            exit(EXIT_FAILURE);
-        }
-
-        tar.block = data;
 
         if (memcmp(TMAGIC, tar.header.magic, TMAGLEN) != 0) {
-            lseek(tar_fd, 0, SEEK_SET);
+            lseek(tar_fd, start_offset, SEEK_SET);
             return -1; // return -1 if the archive contains a header with an invalid magic value
         }
 
         if (memcmp(TVERSION, tar.header.version, TVERSLEN) != 0) {
-            lseek(tar_fd, 0, SEEK_SET);
+            lseek(tar_fd, start_offset, SEEK_SET);
             return -2; // return -2 if the archive contains a header with an invalid version value
         }
 
         if (!check_checksum(&tar)) {
-            lseek(tar_fd, 0, SEEK_SET);
+            lseek(tar_fd, start_offset, SEEK_SET);
             return -3; // return -3 when the archive contains a header with an invalid checksum value
         }
 
         int padding = (512 - file_size % 512) % 512;
 
-        lseek(tar_fd, padding, SEEK_CUR);
+        lseek(tar_fd, file_size + padding, SEEK_CUR);
     }
 
-    lseek(tar_fd, 0, SEEK_SET); // reset the fd to the beginning of the file
+    lseek(tar_fd, start_offset, SEEK_SET); // reset the fd to the offset we read at the start of the function
     return file_count;
 }
 
 int check_file_type(int tar_fd, char *path, char typeflag) {
+    // get the offset at the start of the function, this way we can go back there after we're done here
+    long start_offset = lseek(tar_fd, 0, SEEK_CUR);
+    lseek(tar_fd, 0, SEEK_SET);
+
     tar_file_t tar;
     while (get_header(tar_fd, &tar) >= 0) {
 
@@ -136,14 +137,14 @@ int check_file_type(int tar_fd, char *path, char typeflag) {
 
         // checks the header typeflag with the typeflag passed in as arg, and if the argument typeflag is REGTYPE, then we also want to check if the file perhaps has the old regular type AREGTYPE
         if (tar.header.typeflag == typeflag || (typeflag == REGTYPE && tar.header.typeflag == AREGTYPE)) {
-            lseek(tar_fd, 0, SEEK_SET);
+            lseek(tar_fd, start_offset, SEEK_SET);
             return 1; // success, we found the file, and it is the correct type
         } else {
-            lseek(tar_fd, 0, SEEK_SET);
-            return -1; // we found the file, but it is not the correct type
+            lseek(tar_fd, start_offset, SEEK_SET);
+            return 0; // we found the file, but it is not the correct type
         }
     }
-    lseek(tar_fd, 0, SEEK_SET);
+    lseek(tar_fd, start_offset, SEEK_SET);
 
     return 0;
 }
@@ -158,12 +159,15 @@ int check_file_type(int tar_fd, char *path, char typeflag) {
  *         any other value otherwise.
  */
 int exists(int tar_fd, char *path) {
+    // get the offset at the start of the function, this way we can go back there after we're done here
+    long start_offset = lseek(tar_fd, 0, SEEK_CUR);
+    lseek(tar_fd, 0, SEEK_SET);
+
     tar_file_t tar;
     while (get_header(tar_fd, &tar) >= 0) {
         // Check if current file have the same name as path
-        // TODO avoid buffer overflow
-        if (strncmp(path, tar.header.name, strlen(tar.header.name)) == 0) {
-            lseek(tar_fd, 0, SEEK_SET); // Back to start of file
+        if (strncmp(tar.header.name, path, strlen(path)) == 0) {
+            lseek(tar_fd, start_offset, SEEK_SET); // Back to start of file
             return 1;
         }
 
@@ -171,9 +175,8 @@ int exists(int tar_fd, char *path) {
         int file_size = TAR_INT(tar.header.size);
         int padding = (512 - file_size % 512) % 512;
         lseek(tar_fd, file_size + padding, SEEK_CUR);
-
     }
-    lseek(tar_fd, 0, SEEK_SET);
+    lseek(tar_fd, start_offset, SEEK_SET);
     return 0;
 }
 
@@ -239,30 +242,63 @@ int is_symlink(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
+    long start_offset = lseek(tar_fd, 0, SEEK_CUR);
+    lseek(tar_fd, 0, SEEK_SET);
 
     int current = 0;
     tar_file_t tar;
     while (current < *no_entries && get_header(tar_fd, &tar) >= 0) {
-        // TODO check for buffer overflow
 
-        // check that the base directory is the same and also that the filename is not just the directory that we are listing
-        if (strncmp(path, tar.header.name, strlen(path)) == 0 && strncmp(path, tar.header.name, strlen(tar.header.name)) < 0) {
+        if (
+                // check the path with the name
+                (strncmp(path, tar.header.name, strlen(path)) == 0)
+                // check if it's a link
+                && (tar.header.typeflag == SYMTYPE || tar.header.typeflag == LNKTYPE)
+                // and also check that the linked item is a directory
+                && (is_dir(tar_fd, tar.header.linkname) != 0)
+                ) {
 
-            if (tar.header.typeflag == SYMTYPE) {
-                // set the name of the entry to the linked file's name
-                strncpy(entries[current++], tar.header.linkname, strlen(tar.header.linkname));
-            } else {
-                strncpy(entries[current++], tar.header.name, strlen(tar.header.name));
-            }
+            printf("linked directory: %s\n", tar.header.linkname);
 
+            size_t linked_name_len = strlen(tar.header.linkname) + 2;
+            char linkedname[linked_name_len];
+            snprintf(linkedname, linked_name_len, "%s/", tar.header.linkname);
+
+            lseek(tar_fd, start_offset, SEEK_SET);
+            return list(tar_fd, linkedname, entries, no_entries);
         }
+
+        char *dnamedup = strdup(tar.header.name);
+        // get the directory of this file
+        char *dirname_file = dirname(dnamedup);
+
+        // if path is "" we replace it with "." to allow us to compare this with dirname_file
+        char *path_to_search = strdup(path);
+        if (strcmp(path_to_search, "") == 0) {
+            strcpy(path_to_search, ".");
+        }
+
+        if (
+            // check that the base directory is the same
+                (strncmp(dirname_file, path_to_search, strlen(path_to_search) - 1) == 0)
+                // check that the filename is not just the directory that we are listing
+                && (strncmp(path, tar.header.name, strlen(tar.header.name)) < 0)
+                // check that the directory for the path is the same as the directory for the filename
+                && (strncmp(path_to_search, dirname_file, strlen(dirname_file)) == 0)
+                ) {
+
+            strncpy(entries[current++], tar.header.name, strlen(tar.header.name));
+        }
+
+        free(dnamedup);
+        free(path_to_search);
 
         int file_size = TAR_INT(tar.header.size);
         int padding = (512 - file_size % 512) % 512;
         lseek(tar_fd, file_size + padding, SEEK_CUR);
     }
 
-    lseek(tar_fd, 0, SEEK_SET);
+    lseek(tar_fd, start_offset, SEEK_SET);
     *no_entries = current;
     return current;
 }
@@ -287,6 +323,7 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
  *
  */
 ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
+    lseek(tar_fd, 0, SEEK_SET);
 
     while (true) {
 
@@ -296,41 +333,55 @@ ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *
         }
         int file_size = TAR_INT(tar.header.size);
 
-        // TODO deal with buffer overflow
         if (strncmp(path, tar.header.name, strlen(path)) == 0) {
             if (tar.header.typeflag != REGTYPE && tar.header.typeflag != AREGTYPE && tar.header.typeflag != LNKTYPE && tar.header.typeflag != SYMTYPE) {
-                lseek(tar_fd, 0, SEEK_SET);
                 return -1;
             }
 
             // handle symbolic links
             if (tar.header.typeflag == SYMTYPE) {
 
-                // get the last '/' in the path
-                char *last_slash = strrchr(path, '/');
+                char *linkedname_dup = strdup(tar.header.linkname);
+                char *dirname_linkedname = dirname(linkedname_dup);
 
-                // get the length of the prefix with the last '/' (say path is "dir/file", the prefix is "dir", and here we get the length of the prefix + the last '/')
-                int prefix_length = (last_slash - path)+1;
+                // if the linked file is in the same directory as the linked-to file, then we have to add the full directory in front of the linked file's name
+                if (strcmp(dirname_linkedname, ".") == 0) {
+                    free(linkedname_dup);
 
-                char full_path[prefix_length + strlen(tar.header.linkname)+1];
-                snprintf(full_path, prefix_length + strlen(tar.header.linkname)+1, "%.*s%s", prefix_length, path, tar.header.linkname);
+                    // duplicate the current filename and get the directory
+                    char *dnamedup = strdup(tar.header.name);
+                    char *dirname_file = dirname(dnamedup);
 
-                printf("resolving a linked file: %s -> %s\n", path, full_path);
+                    size_t file_path_len = strlen(dirname_file) + 1 + strlen(tar.header.linkname) + 1;
+                    char linked_file_path[file_path_len];
+                    // create a new filepath with the filename
+                    snprintf(linked_file_path, file_path_len, "%s/%s", dirname_file, tar.header.linkname);
+                    free(dnamedup);
 
-                // resolve the linked file
-                lseek(tar_fd, 0, SEEK_SET);
-                return read_file(tar_fd, full_path, offset, dest, len);
+                    printf("resolving a linked file: %s -> %s\n", tar.header.name, linked_file_path);
+
+                    // resolve the linked file
+                    lseek(tar_fd, 0, SEEK_SET);
+                    return read_file(tar_fd, linked_file_path, offset, dest, len);
+
+                } else {
+                    free(linkedname_dup);
+                    lseek(tar_fd, 0, SEEK_SET);
+                    return read_file(tar_fd, tar.header.linkname, offset, dest, len);
+                }
+
             }
 
             if (offset > file_size) {
-                lseek(tar_fd, 0, SEEK_SET);
                 return -2;
             }
 
             lseek(tar_fd, offset, SEEK_CUR);
 
-            if (*len > file_size) {
-                *len = file_size;
+            printf("filesize: %d, offset: %zu, filesize-offset = %zu\n", file_size, offset, file_size - offset);
+
+            if (*len > file_size - offset) {
+                *len = file_size - offset;
             }
 
             int res = read(tar_fd, (void *) dest, *len);
@@ -339,14 +390,14 @@ ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *
                 exit(EXIT_FAILURE);
             }
 
-            lseek(tar_fd, 0, SEEK_SET);
-            return file_size - res;
+            *len = res;
+
+            return (ssize_t) (file_size - res - offset);
         }
 
         int padding = (512 - file_size % 512) % 512;
         lseek(tar_fd, file_size + padding, SEEK_CUR); // we have to add file_size to the padding since we didn't read the data for this file
     }
 
-    lseek(tar_fd, 0, SEEK_SET);
     return -1;
 }

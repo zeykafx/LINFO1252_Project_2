@@ -40,40 +40,54 @@ int main(int argc, char **argv) {
 //    /*            check archive test:            */
 //    int ret = check_archive(fd);
 //    printf("check_archive returned %d (positive number == success)\n", ret);
-//
-    /*            is ___ test:            */
-    int is_directory = is_symlink(fd, "dir/file1_symlink.txt");
-    printf("is_symlink returned %d\n", is_directory);
+//    lseek(fd, 0, SEEK_SET);
 
 
-    /*            exists test :            */
-    int file_exists = exists(fd, "dir/file1_symlink.txt");
-    printf("exists returned : %d\n", file_exists);
+//    /*            is ___ test:            */
+//    int is_directory = is_dir(fd, "dir/file1_og.txt");
+//    printf("is_symlink returned %d\n", is_directory);
+//    lseek(fd, 0, SEEK_SET);
+
+//    /*            exists test :            */
+//    int file_exists = exists(fd, "di");
+//    printf("exists returned : %d\n", file_exists);
+//    lseek(fd, 0, SEEK_SET);
+
 
 //    /*            list test:            */
+//    size_t arr_size = 6;
 //    size_t no_entries = 6;
 //    char **entries = malloc(no_entries * sizeof(char *));
-//    for (int i = 0; i < no_entries; ++i) {
-//        entries[i] = malloc(1000);
+//    for (int i = 0; i < arr_size; ++i) {
+//        entries[i] = calloc(512, sizeof(char));
 //    }
-//    int list_res = list(fd, "dir/", entries, &no_entries);
+//    int list_res = list(fd, "linked_dir2", entries, &no_entries);
 //    printf("list returned : %d\n", list_res);
-//    for (int i = 0; i < no_entries; ++i) {
-//        printf("entry %d: %s\t", i, entries[i]);
+//    for (int i = 0; i < arr_size; ++i) {
+//        printf("entry %d: %s\n", i, entries[i]);
 //        free(entries[i]);
 //    }
 //    printf("\n");
 //    free(entries);
+//    lseek(fd, 0, SEEK_SET);
 
 
     /*            read_file test:            */
-    size_t size = 1000;
+    size_t size = 841;
     uint8_t *buf = malloc(size);
-    int file_read = read_file(fd, "dir/file1_symlink.txt", 0, buf, &size);
-    printf("read_file returned : %d\n", file_read);
+    lseek(fd, 0, SEEK_SET);
+
+    printf("len before: %zu\n", size);
+    ssize_t file_read = read_file(fd, "dir/file1_symlink.txt", 800, buf, &size);
     for (int i = 0; i < size; i++)
         printf("%c", buf[i]);
+    printf("\n");
+    printf("read_file returned : %zd\n", file_read);
+    printf("len after: %zu\n", size);
+
+
     free(buf);
+    lseek(fd, 0, SEEK_SET);
 
 
     return 0;
