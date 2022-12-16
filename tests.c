@@ -43,8 +43,8 @@ int main(int argc, char **argv) {
 //    lseek(fd, 0, SEEK_SET);
 
 
-//    /*            is ___ test:            */
-//    int is_directory = is_dir(fd, "dir/file1_og.txt");
+    /*            is ___ test:            */
+//    int is_directory = is_symlink(fd, "linked_file");
 //    printf("is_symlink returned %d\n", is_directory);
 //    lseek(fd, 0, SEEK_SET);
 
@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
 //    for (int i = 0; i < arr_size; ++i) {
 //        entries[i] = calloc(512, sizeof(char));
 //    }
-//    int list_res = list(fd, "linked_dir2", entries, &no_entries);
+//    int list_res = list(fd, "linked_dir", entries, &no_entries);
 //    printf("list returned : %d\n", list_res);
 //    for (int i = 0; i < arr_size; ++i) {
 //        printf("entry %d: %s\n", i, entries[i]);
@@ -73,19 +73,17 @@ int main(int argc, char **argv) {
 
 
     /*            read_file test:            */
-    size_t size = 841;
+    size_t size = 1000;
     uint8_t *buf = malloc(size);
     lseek(fd, 0, SEEK_SET);
 
     printf("len before: %zu\n", size);
-    ssize_t file_read = read_file(fd, "dir/file1_symlink.txt", 800, buf, &size);
+    ssize_t file_read = read_file(fd, "dir/file1_symlink.txt", 0, buf, &size);
+    printf("File content:\n");
     for (int i = 0; i < size; i++)
         printf("%c", buf[i]);
-    printf("\n");
-    printf("read_file returned : %zd\n", file_read);
+    printf("\nread_file returned : %zd\n", file_read);
     printf("len after: %zu\n", size);
-
-
     free(buf);
     lseek(fd, 0, SEEK_SET);
 
