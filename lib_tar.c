@@ -340,7 +340,7 @@ ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *
             }
 
             // handle symbolic links
-            if (tar.header.typeflag == SYMTYPE || tar.header.typeflag != LNKTYPE) {
+            if (tar.header.typeflag == SYMTYPE) {
 
                 // WARNING: this is the only thing that works on iniginous because the tests assume that the link and the linked-to files are in the root directory
 //                lseek(tar_fd, 0, SEEK_SET);
